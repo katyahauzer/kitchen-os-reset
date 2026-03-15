@@ -124,47 +124,82 @@
 
     let supabase;
 
+    function debugLog(msg) {
+      const el = document.getElementById('loading');
+      el.textContent = msg;
+    }
+
     async function init() {
       try {
-        // Parse tokens from URL hash BEFORE creating client
+        debugLog('Загрузка SDK...');
+
+        if (!window.supabase) {
+          showLinkError('SDK не загружен. Попробуйте обновить страницу.');
+          return;
+        }
+
+        debugLog('SDK загружен, читаем URL...');
+
         const hash = window.location.hash.substring(1);
         const hashParams = new URLSearchParams(hash);
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
+        const queryParams = new URLSearchParams(window.location.search);
+        const code = queryParams.get('code');
+
+        // Debug: show what we got
+        debugLog('hash: ' + (hash ? hash.substring(0, 50) + '...' : 'пусто') + ' | code: ' + (code || 'нет'));
 
         // Check for error in URL
-        const queryParams = new URLSearchParams(window.location.search);
         if (queryParams.get('error') || hashParams.get('error')) {
-          showLinkError();
-          return;
-        }
-
-        if (!accessToken) {
-          showLinkError();
+          const errDesc = queryParams.get('error_description') || hashParams.get('error_description') || '';
+          showLinkError('URL error: ' + errDesc);
           return;
         }
 
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Set session directly from hash tokens
-        const { data, error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken || '',
-        });
+        // Case 1: implicit flow — access_token in hash
+        if (accessToken) {
+          debugLog('Устанавливаем сессию (implicit)...');
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+          });
 
-        if (error) {
-          showLinkError('setSession error: ' + error.message);
+          if (error) {
+            showLinkError('setSession: ' + error.message);
+            return;
+          }
+          if (!data.session) {
+            showLinkError('Сессия не создана');
+            return;
+          }
+          showForm();
           return;
         }
 
-        if (!data.session) {
-          showLinkError('No session returned');
+        // Case 2: PKCE flow — code in query params
+        if (code) {
+          debugLog('Обмениваем код на сессию (PKCE)...');
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) {
+            showLinkError('exchangeCode: ' + error.message);
+            return;
+          }
+          if (!data.session) {
+            showLinkError('Сессия не создана из кода');
+            return;
+          }
+          showForm();
           return;
         }
 
-        showForm();
+        // No token and no code
+        showLinkError('В ссылке нет токена. URL: ' + window.location.href.substring(0, 100));
       } catch (e) {
-        showLinkError('Exception: ' + (e.message || e));
+        showLinkError('Ошибка: ' + (e.message || e));
       }
     }
 
