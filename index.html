@@ -126,32 +126,38 @@
 
     async function init() {
       try {
+        // Parse tokens from URL hash BEFORE creating client
+        const hash = window.location.hash.substring(1);
+        const hashParams = new URLSearchParams(hash);
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+
+        // Check for error in URL
+        const queryParams = new URLSearchParams(window.location.search);
+        if (queryParams.get('error') || hashParams.get('error')) {
+          showLinkError();
+          return;
+        }
+
+        if (!accessToken) {
+          showLinkError();
+          return;
+        }
+
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Check for auth params in URL hash (implicit flow) or code in query (PKCE)
-        const hash = window.location.hash;
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
+        // Set session directly from hash tokens
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken || '',
+        });
 
-        if (code) {
-          // PKCE flow: exchange code for session
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) {
-            showLinkError();
-            return;
-          }
-          showForm();
-        } else if (hash && hash.includes('access_token')) {
-          // Implicit flow: session is in the hash
-          const { data, error } = await supabase.auth.getSession();
-          if (error || !data.session) {
-            showLinkError();
-            return;
-          }
-          showForm();
-        } else {
+        if (error) {
           showLinkError();
+          return;
         }
+
+        showForm();
       } catch (e) {
         showLinkError();
       }
