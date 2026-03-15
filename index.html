@@ -147,19 +147,24 @@
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Set session directly from hash tokens
-        const { error } = await supabase.auth.setSession({
+        const { data, error } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken || '',
         });
 
         if (error) {
-          showLinkError();
+          showLinkError('setSession error: ' + error.message);
+          return;
+        }
+
+        if (!data.session) {
+          showLinkError('No session returned');
           return;
         }
 
         showForm();
       } catch (e) {
-        showLinkError();
+        showLinkError('Exception: ' + (e.message || e));
       }
     }
 
@@ -169,9 +174,13 @@
       document.getElementById('password').focus();
     }
 
-    function showLinkError() {
+    function showLinkError(debugMsg) {
       document.getElementById('loading').classList.add('hidden');
       document.getElementById('linkError').classList.remove('hidden');
+      if (debugMsg) {
+        const el = document.getElementById('linkError');
+        el.innerHTML += '<p style="margin-top:16px;font-size:12px;color:#999;word-break:break-all;">Debug: ' + debugMsg + '</p>';
+      }
     }
 
     async function handleSubmit() {
